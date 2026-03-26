@@ -1,19 +1,20 @@
-ARG REGISTRY=docker.io
-ARG VERSION=3.22
+ARG REGISTRY
 
-FROM ${REGISTRY}/alpine:${VERSION}
+FROM ${REGISTRY}/python:3.12-slim
 
-ARG URL_NEXUS
+ARG PIP_INDEX_URL
 
-RUN VERSION=$(cat /etc/alpine-release) && \
-    URL="https://${URL_NEXUS##https://}/repository/alpine/v${VERSION%.*}" && \
-    echo -e "${URL}/community\n${URL}/main" > /etc/apk/repositories
+WORKDIR /app
 
-RUN apk add --no-cache bash curl
+COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    ${PIP_INDEX_URL:+--index-url "$PIP_INDEX_URL"} \
+    ${PIP_INDEX_URL:+--trusted-host "$(echo $PIP_INDEX_URL | sed 's|https\?://\([^/:]*\).*|\1|')"} \
+    -r requirements.txt
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY . .
 
-RUN echo "" > /etc/apk/repositories
+RUN python manage.py collectstatic --noinput 2>/dev/null || true
 
-ENTRYPOINT ["entrypoint.sh"]
+EXPOSE 1000
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:1000"]
